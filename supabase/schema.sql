@@ -1,11 +1,10 @@
 -- ============================================================
--- QuizClub schema — run this once in Supabase SQL Editor
--- (Project → SQL Editor → New query → paste all → Run)
+-- QuizClub schema — idempotent version (safe to run multiple times)
 -- ============================================================
 
 create extension if not exists "uuid-ossp";
 
--- ---------- PROFILES (one row per auth user) ----------
+-- ---------- PROFILES ----------
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique not null,
@@ -15,15 +14,16 @@ create table if not exists profiles (
 
 alter table profiles enable row level security;
 
+drop policy if exists "profiles are readable by everyone" on profiles;
 create policy "profiles are readable by everyone"
   on profiles for select
   using (true);
 
+drop policy if exists "users can update own profile" on profiles;
 create policy "users can update own profile"
   on profiles for update
   using (auth.uid() = id);
 
--- Auto-create a profile row whenever someone signs up
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -49,10 +49,12 @@ create table if not exists categories (
 
 alter table categories enable row level security;
 
+drop policy if exists "categories are readable by everyone" on categories;
 create policy "categories are readable by everyone"
   on categories for select
   using (true);
 
+drop policy if exists "only admins can write categories" on categories;
 create policy "only admins can write categories"
   on categories for all
   using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'))
@@ -71,16 +73,18 @@ create table if not exists questions (
 
 alter table questions enable row level security;
 
+drop policy if exists "questions are readable by everyone" on questions;
 create policy "questions are readable by everyone"
   on questions for select
   using (true);
 
+drop policy if exists "only admins can write questions" on questions;
 create policy "only admins can write questions"
   on questions for all
   using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'))
   with check (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
 
--- ---------- SCORES (leaderboard) ----------
+-- ---------- SCORES ----------
 create table if not exists scores (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -93,10 +97,12 @@ create table if not exists scores (
 
 alter table scores enable row level security;
 
+drop policy if exists "scores are readable by everyone" on scores;
 create policy "scores are readable by everyone"
   on scores for select
   using (true);
 
+drop policy if exists "users can insert their own scores" on scores;
 create policy "users can insert their own scores"
   on scores for insert
   with check (auth.uid() = user_id);
