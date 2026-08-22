@@ -135,3 +135,9 @@ export function playFlip() {
   tone(300, 0.06, { type: "triangle", peak: 0.14 });
   tone(500, 0.09, { type: "triangle", delay: 0.05, peak: 0.14 });
 }
+
+export function playDiceRattle() {
+  for (let i = 0; i < 5; i++) {
+    tone(200 + Math.random() * 300, 0.05, { type: "square", delay: i * 0.09, peak: 0.1 });
+  }
+}

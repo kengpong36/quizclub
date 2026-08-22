@@ -106,6 +106,14 @@ export const GAMES: GameEntry[] = [
     href: "/multiplayer",
   },
   {
+    id: "dice-party",
+    name: "ทอยเต๋าปาร์ตี้",
+    icon: "🎲",
+    desc: "ทอยเต๋าเดินรอบกระดาน ใครไปตกช่องไหนโดนภารกิจนั้น เล่นผลัดกันทีละคน ไม่ต้องล็อกอิน",
+    playable: true,
+    href: "/dice-party",
+  },
+  {
     id: "coming-soon",
     name: "เกมใหม่ (เร็วๆ นี้)",
     icon: "✨",
