@@ -10,8 +10,12 @@ function getCtx(): AudioContext | null {
   if (!ctx) {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     ctx = new AC();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && ctx && ctx.state === "suspended") {
+        ctx.resume();
+      }
+    });
   }
-  if (ctx.state === "suspended") ctx.resume();
   return ctx;
 }
 
@@ -38,29 +42,33 @@ export function setMuted(muted: boolean): void {
 export function unlockAudio(): void {
   const audioCtx = getCtx();
   if (!audioCtx) return;
+  const playSilentBlip = () => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.01);
+  };
   if (audioCtx.state === "suspended") {
-    audioCtx.resume();
+    audioCtx.resume().then(playSilentBlip);
+  } else {
+    playSilentBlip();
   }
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.01);
 }
 
-function tone(
+function scheduleTone(
+  audioCtx: AudioContext,
   freq: number,
   duration: number,
-  opts: { type?: OscillatorType; delay?: number; peak?: number } = {}
+  opts: { type?: OscillatorType; delay?: number; peak?: number }
 ) {
-  if (isMuted()) return;
-  const audioCtx = getCtx();
-  if (!audioCtx) return;
   const { type = "sine", delay = 0, peak = 0.18 } = opts;
+  // Read currentTime fresh, right when we know the context is actually
+  // running — scheduling against a stale/suspended currentTime is what
+  // caused in-game sounds to silently drop after the context idled out.
   const startAt = audioCtx.currentTime + delay;
-
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = type;
@@ -72,6 +80,25 @@ function tone(
   gain.connect(audioCtx.destination);
   osc.start(startAt);
   osc.stop(startAt + duration + 0.02);
+}
+
+function tone(
+  freq: number,
+  duration: number,
+  opts: { type?: OscillatorType; delay?: number; peak?: number } = {}
+) {
+  if (isMuted()) return;
+  const audioCtx = getCtx();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    // Browsers idle-suspend AudioContexts after a few seconds of silence
+    // (e.g. while someone browses categories before starting a round).
+    // Resume first, then schedule — otherwise the note gets scheduled
+    // against a frozen currentTime and never actually plays.
+    audioCtx.resume().then(() => scheduleTone(audioCtx, freq, duration, opts));
+  } else {
+    scheduleTone(audioCtx, freq, duration, opts);
+  }
 }
 
 export function playTick() {
