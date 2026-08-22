@@ -64,6 +64,49 @@ export type RoomAnswer = {
   answered_at: string;
 };
 
+export type PokRoom = {
+  id: string;
+  code: string;
+  host_guest_id: string;
+  status: "lobby" | "betting" | "acting" | "reveal" | "ended";
+  turn_order: string[];
+  banker_guest_id: string | null;
+  round_number: number;
+  min_bet: number;
+  max_bet: number;
+  acting_guest_id: string | null;
+  deck: import("./pokdeng").Card[];
+  created_at: string;
+};
+
+export type PokPlayer = {
+  id: string;
+  room_id: string;
+  guest_id: string;
+  nickname: string;
+  chips: number;
+  joined_at: string;
+};
+
+export type PokBet = {
+  id: string;
+  room_id: string;
+  round_number: number;
+  guest_id: string;
+  amount: number;
+  created_at: string;
+};
+
+export type PokHand = {
+  id: string;
+  room_id: string;
+  round_number: number;
+  guest_id: string;
+  cards: import("./pokdeng").Card[];
+  stayed: boolean;
+  created_at: string;
+};
+
 // ============================================================
 // GAMES REGISTRY — add a new game by pushing an entry here.
 // Each game's questions/categories are scoped by `id` (game_id
@@ -112,6 +155,14 @@ export const GAMES: GameEntry[] = [
     desc: "ทอยเต๋าเดินรอบกระดาน ใครไปตกช่องไหนโดนภารกิจนั้น เล่นผลัดกันทีละคน ไม่ต้องล็อกอิน",
     playable: true,
     href: "/dice-party",
+  },
+  {
+    id: "pokdeng",
+    name: "ไพ่ป๊อกเด้ง",
+    icon: "🃏",
+    desc: "เล่นพร้อมกันได้หลายคน เวียนเจ้ามือ มีชิปเสมือนพนันกันเล่นๆ (ไม่ใช่เงินจริง) ไม่ต้องล็อกอิน",
+    playable: true,
+    href: "/pokdeng",
   },
   {
     id: "coming-soon",
