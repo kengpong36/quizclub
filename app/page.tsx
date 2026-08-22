@@ -32,14 +32,18 @@ export default function HomePage() {
           <div
             key={g.id}
             className={"game-card" + (g.playable ? "" : " disabled")}
-            onClick={() => g.playable && router.push(`/play/${g.id}`)}
+            onClick={() => g.playable && router.push(g.href || `/play/${g.id}`)}
           >
             <div className="gtitle">
               {g.icon} {g.name}
             </div>
             <div className="gdesc">{g.desc}</div>
             <div className="gmeta">
-              {g.playable ? `${counts[g.id] || 0} คำถามในคลัง` : "ยังเล่นไม่ได้"}
+              {!g.playable
+                ? "ยังเล่นไม่ได้"
+                : g.id === "party"
+                ? `ไม่ต้องล็อกอิน · ใช้คลังคำถาม ${counts["truth-or-lie"] || 0} ข้อ`
+                : `${counts[g.id] || 0} คำถามในคลัง`}
             </div>
           </div>
         ))}
