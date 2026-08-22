@@ -284,27 +284,37 @@ export default function HostModePage() {
           </div>
 
           {current && (
-            <>
-              <div className="row-between">
-                <span className="category-tag">{currentCatName}</span>
-              </div>
-              <div className="qcard" key={current.id}>
-                {current.text}
-              </div>
-
-              {revealed ? (
-                <div className="reveal show">
-                  <div className={"verdict " + (current.answer ? "ok" : "no")}>
-                    {current.answer ? "✅ คำตอบ: จริง" : "❌ คำตอบ: มั่ว"}
-                  </div>
-                  <div>{current.explain}</div>
+            <div className="modal-back" onClick={() => setCurrentId(null)}>
+              <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <div className="row-between">
+                  <span className="category-tag">{currentCatName}</span>
+                  <button className="link-btn" onClick={() => setCurrentId(null)}>
+                    ✕ ปิด
+                  </button>
                 </div>
-              ) : (
-                <button className="btn" onClick={revealAnswer}>
-                  เฉลย
-                </button>
-              )}
-            </>
+                <div className="qcard" key={current.id}>
+                  {current.text}
+                </div>
+
+                {revealed ? (
+                  <>
+                    <div className="reveal show">
+                      <div className={"verdict " + (current.answer ? "ok" : "no")}>
+                        {current.answer ? "✅ คำตอบ: จริง" : "❌ คำตอบ: มั่ว"}
+                      </div>
+                      <div>{current.explain}</div>
+                    </div>
+                    <button className="btn" style={{ marginTop: 14 }} onClick={() => setCurrentId(null)}>
+                      ปิด กลับไปเลือกการ์ดถัดไป
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn" onClick={revealAnswer}>
+                    เฉลย
+                  </button>
+                )}
+              </div>
+            </div>
           )}
 
           {allUsed && (
