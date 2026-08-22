@@ -146,7 +146,7 @@ export default function PartyModePage() {
         padding: "10px 12px",
         border: "1px solid var(--line)",
         borderRadius: 10,
-        background: "rgba(0,0,0,0.2)",
+        background: "var(--card)",
       }}
     >
       🚫 พาสได้เสมอ ไม่ต้องมีเหตุผล &nbsp;·&nbsp; 💧 สลับเป็นน้ำเปล่าได้ตลอดเกม
