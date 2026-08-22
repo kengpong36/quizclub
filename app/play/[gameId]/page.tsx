@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import type { Category, Question } from "@/lib/types";
 import { GAMES } from "@/lib/types";
+import { playTick, playCorrect, playWrong, playFanfare } from "@/lib/sound";
+import SoundToggle from "@/components/SoundToggle";
 
 type Stage = "loading" | "pick" | "play" | "end";
 const TOTAL_TIME = 10;
@@ -167,9 +169,15 @@ export default function PlayPage() {
     setTimeLeft(TOTAL_TIME);
     if (timerRef.current) clearInterval(timerRef.current);
     let t = TOTAL_TIME;
+    let lastTickSecond = Math.ceil(t);
     timerRef.current = setInterval(() => {
       t -= 0.1;
       setTimeLeft(Math.max(0, t));
+      const currentSecond = Math.ceil(t);
+      if (currentSecond <= 3 && currentSecond >= 1 && currentSecond !== lastTickSecond) {
+        playTick();
+        lastTickSecond = currentSecond;
+      }
       if (t <= 0) {
         if (timerRef.current) clearInterval(timerRef.current);
         handleAnswer(null, i, d);
@@ -185,6 +193,8 @@ export default function PlayPage() {
       if (timerRef.current) clearInterval(timerRef.current);
       const q = curDeck[curIdx];
       const correct = userChoice === q.answer;
+      if (correct) playCorrect();
+      else playWrong();
       setChosen(userChoice);
       setScore((s) => {
         if (!correct) return s;
@@ -212,6 +222,7 @@ export default function PlayPage() {
 
   async function endGame() {
     setStage("end");
+    playFanfare();
     if (session?.user?.id) {
       const { error } = await supabase.from("scores").insert({
         user_id: session.user.id,
@@ -335,6 +346,7 @@ export default function PlayPage() {
     const correct = chosen !== null && chosen === q.answer;
     return (
       <div className="frame">
+        <SoundToggle />
         <div className="hud">
           <span className="pill">
             ข้อ {idx + 1}/{deck.length}

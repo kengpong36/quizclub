@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import type { Category, Question } from "@/lib/types";
+import { playTick, playCountdownGo, playReveal, playFanfare } from "@/lib/sound";
+import SoundToggle from "@/components/SoundToggle";
 
 const SOURCE_GAME_ID = "truth-or-lie"; // party mode reuses the same question bank
 const RIDDLE_CATEGORY_NAME = "คำถามเชาว์";
@@ -73,13 +75,16 @@ export default function PartyModePage() {
   function runCountdown() {
     setStage("countdown");
     setCountdownNum(3);
+    playTick();
     let n = 3;
     const tick = () => {
       n -= 1;
       if (n <= 0) {
         setCountdownNum(0); // shows "โหวต!"
+        playCountdownGo();
       } else {
         setCountdownNum(n);
+        playTick();
         setTimeout(tick, 800);
       }
     };
@@ -88,6 +93,7 @@ export default function PartyModePage() {
 
   function goToBreakOrNext(nextIdx: number) {
     if (nextIdx >= deck.length) {
+      playFanfare();
       setStage("done");
       return;
     }
@@ -154,6 +160,7 @@ export default function PartyModePage() {
   if (stage === "setup") {
     return (
       <div className="frame">
+        <SoundToggle />
         <h2 className="section-title">🍻 จริงมั่ว วงเหล้า</h2>
         <div className="section-sub">
           พิธีกรเปิดหน้านี้อ่านคำถามให้วงฟัง ทุกคนโหวตพร้อมกัน ตอบผิดจิบ 1 — ไม่ต้องล็อกอิน
@@ -222,6 +229,7 @@ export default function PartyModePage() {
     const ss = String(breakSecondsLeft % 60).padStart(2, "0");
     return (
       <div className="frame">
+        <SoundToggle />
         <h2 className="section-title" style={{ textAlign: "center" }}>
           💧 พักดื่มน้ำ
         </h2>
@@ -249,6 +257,7 @@ export default function PartyModePage() {
   if (stage === "done") {
     return (
       <div className="frame">
+        <SoundToggle />
         <h2 className="section-title" style={{ textAlign: "center" }}>
           🎉 จบวงแล้ว
         </h2>
@@ -273,6 +282,7 @@ export default function PartyModePage() {
   // stage === "countdown" or "reveal"
   return (
     <div className="frame">
+      <SoundToggle />
       <div className="row-between">
         <span className="category-tag">
           {catName} {isRiddle && "🧠 จิบคู่"}
@@ -297,7 +307,14 @@ export default function PartyModePage() {
             {countdownNum === 0 ? "โหวต! 👍👎" : countdownNum}
           </div>
           {countdownNum === 0 && (
-            <button className="btn" style={{ marginTop: 16 }} onClick={() => setStage("reveal")}>
+            <button
+              className="btn"
+              style={{ marginTop: 16 }}
+              onClick={() => {
+                playReveal();
+                setStage("reveal");
+              }}
+            >
               เฉลย
             </button>
           )}

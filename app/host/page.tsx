@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import type { Category, Question } from "@/lib/types";
 import { GAMES } from "@/lib/types";
+import { playReveal } from "@/lib/sound";
+import SoundToggle from "@/components/SoundToggle";
 
 const HOST_USERNAME = "jkmc";
 const DEFAULT_GAME_ID = GAMES.find((g) => g.playable)?.id || "truth-or-lie";
@@ -160,6 +162,7 @@ export default function HostModePage() {
 
   return (
     <div className="frame">
+      <SoundToggle />
       <h2 className="section-title">🎙️ โหมดพิธีกร</h2>
       <div className="section-sub">
         ไม่จับเวลาต่อข้อ สุ่มลำดับคำถามไว้ล่วงหน้า อ่านให้ผู้เข้าแข่งขันฟังแล้วกดเฉลยเองได้ตามจังหวะ
@@ -231,7 +234,13 @@ export default function HostModePage() {
               <div>{q.explain}</div>
             </div>
           ) : (
-            <button className="btn" onClick={() => setRevealed(true)}>
+            <button
+              className="btn"
+              onClick={() => {
+                playReveal();
+                setRevealed(true);
+              }}
+            >
               เฉลย
             </button>
           )}
