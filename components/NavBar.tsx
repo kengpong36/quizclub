@@ -28,6 +28,9 @@ export default function NavBar() {
         {profile?.role === "admin" && (
           <Link href="/admin" className={linkClass("/admin")}>จัดการคำถาม</Link>
         )}
+        {profile?.username === "jkmc" && (
+          <Link href="/host" className={linkClass("/host")}>🎙️ พิธีกร</Link>
+        )}
         {session ? (
           <button className="nav-link" onClick={handleLogout}>
             ออกจากระบบ ({profile?.username || "…"})

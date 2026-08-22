@@ -16,13 +16,30 @@ export default function LeaderboardPage() {
     async function load() {
       if (!gameId) return;
       setLoading(true);
-      const { data } = await supabase
+      const { data: scoreRows } = await supabase
         .from("scores")
-        .select("*, profiles(username)")
+        .select("*")
         .eq("game_id", gameId)
         .order("score", { ascending: false })
         .limit(20);
-      setRows((data as unknown as Score[]) || []);
+
+      const userIds = Array.from(new Set((scoreRows || []).map((r) => r.user_id)));
+      let profileMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profileRows } = await supabase
+          .from("profiles")
+          .select("id, username")
+          .in("id", userIds);
+        profileMap = Object.fromEntries(
+          (profileRows || []).map((p: { id: string; username: string }) => [p.id, p.username])
+        );
+      }
+
+      const merged: Score[] = (scoreRows || []).map((r) => ({
+        ...r,
+        profiles: { username: profileMap[r.user_id] || "ผู้เล่น" },
+      }));
+      setRows(merged);
       setLoading(false);
     }
     load();
