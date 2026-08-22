@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
@@ -9,6 +10,7 @@ import { GAMES } from "@/lib/types";
 
 type Stage = "loading" | "pick" | "play" | "end";
 const TOTAL_TIME = 10;
+const DAILY_LIMIT = 3;
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -19,10 +21,16 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+function startOfTodayISO(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
 export default function PlayPage() {
   const { gameId } = useParams<{ gameId: string }>();
   const router = useRouter();
-  const { session } = useAuth();
+  const { session, profile, loading: authLoading } = useAuth();
   const game = GAMES.find((g) => g.id === gameId);
 
   const [stage, setStage] = useState<Stage>("loading");
@@ -30,6 +38,8 @@ export default function PlayPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<Set<string>>(new Set());
   const [roundLength, setRoundLength] = useState(10);
+  const [playsToday, setPlaysToday] = useState<number | null>(null);
+  const [limitError, setLimitError] = useState("");
 
   const [deck, setDeck] = useState<Question[]>([]);
   const [idx, setIdx] = useState(0);
@@ -43,7 +53,24 @@ export default function PlayPage() {
   const [bestStreak, setBestStreak] = useState(0);
   const [saved, setSaved] = useState(false);
 
+  const isUnlimited = profile?.role === "admin";
+
+  async function refreshPlaysToday(userId: string) {
+    const { count } = await supabase
+      .from("scores")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("game_id", gameId)
+      .gte("played_at", startOfTodayISO());
+    setPlaysToday(count ?? 0);
+  }
+
   useEffect(() => {
+    if (authLoading) return;
+    if (!session) {
+      setStage("pick"); // will render the login-required screen below
+      return;
+    }
     async function load() {
       const { data: cats } = await supabase
         .from("categories")
@@ -56,22 +83,53 @@ export default function PlayPage() {
       setCategories(cats || []);
       setQuestions(qs || []);
       setSelectedCatIds(new Set((cats || []).map((c) => c.id)));
+      if (session?.user?.id) await refreshPlaysToday(session.user.id);
       setStage("pick");
     }
     load();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, authLoading, session]);
 
   if (!game) {
     return <div className="frame">ไม่พบเกมนี้</div>;
+  }
+
+  if (authLoading) {
+    return <div className="frame">กำลังโหลด...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="frame">
+        <h2 className="section-title">ต้องเข้าสู่ระบบก่อนเล่น</h2>
+        <div className="section-sub">
+          เกมนี้ต้องมีบัญชีเพื่อบันทึกคะแนนและจำกัดจำนวนรอบต่อวัน — สมัครฟรี ใช้แค่ชื่อผู้ใช้กับรหัสผ่าน
+        </div>
+        <div className="end-actions">
+          <Link href="/signup" className="btn" style={{ textAlign: "center" }}>
+            สมัครสมาชิก
+          </Link>
+          <Link href="/login" className="btn ghost" style={{ textAlign: "center" }}>
+            เข้าสู่ระบบ
+          </Link>
+          <Link href="/" className="btn ghost" style={{ textAlign: "center" }}>
+            กลับหน้าแรก
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   const pool = questions.filter((q) => selectedCatIds.has(q.category_id));
   const availableOptions = Array.from(
     new Set([5, 10, 15, pool.length].filter((v) => v > 0 && v <= pool.length))
   ).sort((a, b) => a - b);
+
+  const remainingPlays = playsToday === null ? null : Math.max(0, DAILY_LIMIT - playsToday);
+  const limitReached = !isUnlimited && remainingPlays !== null && remainingPlays <= 0;
 
   function toggleCat(id: string) {
     const next = new Set(selectedCatIds);
@@ -81,6 +139,8 @@ export default function PlayPage() {
   }
 
   function startGame() {
+    if (limitReached) return;
+    setLimitError("");
     const chosenLen = roundLength && pool.length >= roundLength ? roundLength : pool.length;
     const newDeck = shuffle(pool).slice(0, chosenLen);
     setDeck(newDeck);
@@ -145,14 +205,21 @@ export default function PlayPage() {
   async function endGame() {
     setStage("end");
     if (session?.user?.id) {
-      await supabase.from("scores").insert({
+      const { error } = await supabase.from("scores").insert({
         user_id: session.user.id,
         game_id: gameId,
         score,
         total_questions: deck.length,
         best_streak: bestStreak,
       });
-      setSaved(true);
+      if (error) {
+        // Likely blocked by the daily-limit trigger (edge case: limit hit
+        // mid-session, e.g. played in another tab).
+        setLimitError("หมดโควตาการเล่นวันนี้แล้ว คะแนนรอบนี้เลยไม่ถูกบันทึกลงอันดับนะครับ");
+      } else {
+        setSaved(true);
+      }
+      await refreshPlaysToday(session.user.id);
     }
   }
 
@@ -175,6 +242,21 @@ export default function PlayPage() {
           </button>
         </div>
         <div className="section-sub">เลือกหมวดที่อยากเล่น (เลือกได้หลายหมวด)</div>
+
+        {!isUnlimited && remainingPlays !== null && (
+          <div
+            className="info-text"
+            style={{
+              marginBottom: 14,
+              color: limitReached ? "#f0938c" : "var(--muted)",
+            }}
+          >
+            {limitReached
+              ? `เล่นครบ ${DAILY_LIMIT} ครั้งของวันนี้แล้ว กลับมาเล่นใหม่ได้พรุ่งนี้นะครับ`
+              : `เล่นได้อีก ${remainingPlays}/${DAILY_LIMIT} ครั้งวันนี้`}
+          </div>
+        )}
+
         <div className="row-between">
           <span style={{ fontSize: 13, color: "var(--muted)" }}>
             {pool.length} คำถามที่เลือกไว้
@@ -231,8 +313,8 @@ export default function PlayPage() {
             </div>
           </>
         )}
-        <button className="btn" disabled={pool.length === 0} onClick={startGame}>
-          เริ่มเกม
+        <button className="btn" disabled={pool.length === 0 || limitReached} onClick={startGame}>
+          {limitReached ? "หมดโควตาวันนี้แล้ว" : "เริ่มเกม"}
         </button>
       </div>
     );
@@ -310,6 +392,8 @@ export default function PlayPage() {
     desc = "ยังงงๆ กับความจริงและเรื่องมั่วอยู่บ้าง ลองใหม่อีกครั้ง!";
   }
 
+  const canReplay = isUnlimited || (remainingPlays !== null && remainingPlays > 0);
+
   return (
     <div className="frame">
       <div style={{ fontFamily: "Kanit", color: "var(--muted)", textAlign: "center" }}>
@@ -318,19 +402,24 @@ export default function PlayPage() {
       <div className="score-big">{score}</div>
       <div className="rank">{rank}</div>
       <div className="end-desc">{desc}</div>
-      {!session && (
-        <div className="info-text" style={{ textAlign: "center", marginBottom: 16 }}>
-          เข้าสู่ระบบเพื่อบันทึกคะแนนลงกระดานอันดับ
-        </div>
-      )}
-      {session && saved && (
+      {saved && (
         <div className="info-text" style={{ textAlign: "center", marginBottom: 16 }}>
           บันทึกคะแนนลงอันดับแล้ว ✅
         </div>
       )}
+      {limitError && (
+        <div className="error-text" style={{ textAlign: "center", marginBottom: 16 }}>
+          {limitError}
+        </div>
+      )}
+      {!isUnlimited && remainingPlays !== null && (
+        <div className="info-text" style={{ textAlign: "center", marginBottom: 16 }}>
+          เหลือโควตาเล่นวันนี้อีก {remainingPlays}/{DAILY_LIMIT} ครั้ง
+        </div>
+      )}
       <div className="end-actions">
-        <button className="btn" onClick={replaySameCategories}>
-          เล่นหมวดเดิมอีกครั้ง
+        <button className="btn" onClick={replaySameCategories} disabled={!canReplay}>
+          {canReplay ? "เล่นหมวดเดิมอีกครั้ง" : "หมดโควตาวันนี้แล้ว"}
         </button>
         <button className="btn ghost" onClick={() => router.push("/leaderboard")}>
           ดูกระดานอันดับ

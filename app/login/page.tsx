@@ -4,10 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { usernameToEmail, normalizeUsername } from "@/lib/username";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,10 +17,13 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(normalizeUsername(username)),
+      password,
+    });
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       return;
     }
     router.push("/");
@@ -28,10 +32,16 @@ export default function LoginPage() {
   return (
     <div className="frame">
       <h2 className="section-title">เข้าสู่ระบบ</h2>
-      <div className="section-sub">ล็อกอินเพื่อบันทึกคะแนนลงอันดับ และเข้าถึงสิทธิ์ของคุณ</div>
+      <div className="section-sub">ล็อกอินเพื่อเล่นเกมและบันทึกคะแนนลงอันดับ</div>
       <form onSubmit={handleSubmit}>
-        <label className="field-label">อีเมล</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <label className="field-label">ชื่อผู้ใช้</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoCapitalize="none"
+          required
+        />
         <label className="field-label">รหัสผ่าน</label>
         <input
           type="password"
