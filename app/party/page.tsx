@@ -292,7 +292,7 @@ export default function PartyModePage() {
         </span>
       </div>
 
-      <div className="qcard">{q?.text}</div>
+      <div className="qcard" key={q?.id}>{q?.text}</div>
 
       {stage === "countdown" && (
         <div style={{ textAlign: "center", margin: "20px 0" }}>

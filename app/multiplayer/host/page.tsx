@@ -329,7 +329,7 @@ export default function HostMultiplayerPage() {
             ข้อ {room.current_index + 1}/{room.question_ids.length}
           </span>
         </div>
-        <div className="qcard">{q?.text}</div>
+        <div className="qcard" key={q?.id}>{q?.text}</div>
         {q && (
           <div className="reveal show">
             <div className={"verdict " + (q.answer ? "ok" : "no")}>

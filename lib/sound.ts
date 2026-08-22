@@ -80,3 +80,8 @@ export function playReveal() {
   tone(440, 0.1, { delay: 0 });
   tone(880, 0.16, { delay: 0.1, peak: 0.2 });
 }
+
+export function playFlip() {
+  tone(300, 0.06, { type: "triangle", peak: 0.14 });
+  tone(500, 0.09, { type: "triangle", delay: 0.05, peak: 0.14 });
+}

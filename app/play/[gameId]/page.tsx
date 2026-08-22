@@ -358,7 +358,7 @@ export default function PlayPage() {
           <div className="fuse-bar" style={{ width: pct + "%" }} />
         </div>
         <div className="category-tag">{catName}</div>
-        <div className={"qcard" + (answered ? (correct ? " correct-pulse" : " shake") : "")}>
+        <div className={"qcard" + (answered ? (correct ? " correct-pulse" : " shake") : "")} key={q.id}>
           {q.text}
         </div>
         <div className="answers">

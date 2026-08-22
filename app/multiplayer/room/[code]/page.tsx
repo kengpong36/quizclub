@@ -285,7 +285,7 @@ export default function PlayerRoomPage() {
       <div className="fuse-track">
         <div className="fuse-bar" style={{ width: pct + "%" }} />
       </div>
-      <div className="qcard">{q?.text}</div>
+      <div className="qcard" key={q?.id}>{q?.text}</div>
       {!submitted ? (
         <div className="answers">
           <button className="ans-btn truth" onClick={() => submitAnswer(true)}>

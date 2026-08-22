@@ -6,11 +6,12 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import type { Category, Question } from "@/lib/types";
 import { GAMES } from "@/lib/types";
-import { playReveal } from "@/lib/sound";
+import { playReveal, playFlip, playFanfare } from "@/lib/sound";
 import SoundToggle from "@/components/SoundToggle";
 
 const HOST_USERNAME = "jkmc";
 const DEFAULT_GAME_ID = GAMES.find((g) => g.playable)?.id || "truth-or-lie";
+const CARD_COUNT_OPTIONS = [6, 9, 12, 15];
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -77,15 +78,22 @@ function TeamTimer({ label, color }: { label: string; color: string }) {
   );
 }
 
+type Stage = "setup" | "grid";
+
 export default function HostModePage() {
   const { session, profile, loading: authLoading } = useAuth();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<Set<string>>(new Set());
-  const [deck, setDeck] = useState<Question[]>([]);
-  const [idx, setIdx] = useState(0);
+  const [cardCount, setCardCount] = useState(9);
+
+  const [stage, setStage] = useState<Stage>("setup");
+  const [cards, setCards] = useState<Question[]>([]);
+  const [usedIds, setUsedIds] = useState<Set<string>>(new Set());
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const fanfarePlayedRef = useRef(false);
 
   const isHost = profile?.username === HOST_USERNAME;
 
@@ -107,6 +115,15 @@ export default function HostModePage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost]);
+
+  const allUsedForEffect = cards.length > 0 && cards.every((c) => usedIds.has(c.id));
+  useEffect(() => {
+    if (allUsedForEffect && !fanfarePlayedRef.current) {
+      fanfarePlayedRef.current = true;
+      playFanfare();
+    }
+    if (!allUsedForEffect) fanfarePlayedRef.current = false;
+  }, [allUsedForEffect]);
 
   if (authLoading) {
     return <div className="frame">กำลังโหลด...</div>;
@@ -134,6 +151,7 @@ export default function HostModePage() {
   }
 
   const pool = questions.filter((q) => selectedCatIds.has(q.category_id));
+  const availableCounts = CARD_COUNT_OPTIONS.filter((n) => n <= pool.length);
 
   function toggleCat(id: string) {
     const next = new Set(selectedCatIds);
@@ -143,29 +161,42 @@ export default function HostModePage() {
   }
 
   function startRound() {
-    setDeck(shuffle(pool));
-    setIdx(0);
+    const n = Math.min(cardCount, pool.length);
+    setCards(shuffle(pool).slice(0, n));
+    setUsedIds(new Set());
+    setCurrentId(null);
+    setRevealed(false);
+    setStage("grid");
+  }
+
+  function pickCard(q: Question) {
+    if (usedIds.has(q.id)) return;
+    playFlip();
+    setCurrentId(q.id);
     setRevealed(false);
   }
 
-  function next() {
-    setRevealed(false);
-    setIdx((i) => Math.min(i + 1, deck.length - 1));
-  }
-  function prev() {
-    setRevealed(false);
-    setIdx((i) => Math.max(i - 1, 0));
+  function revealAnswer() {
+    if (!currentId) return;
+    playReveal();
+    setRevealed(true);
+    setUsedIds((prev) => new Set(prev).add(currentId));
   }
 
-  const q = deck[idx];
-  const catName = q ? categories.find((c) => c.id === q.category_id)?.name || "หมวด" : "";
+  const current = cards.find((c) => c.id === currentId) || null;
+  const currentCatName = current
+    ? categories.find((c) => c.id === current.category_id)?.name || "หมวด"
+    : "";
+  const allUsed = cards.length > 0 && cards.every((c) => usedIds.has(c.id));
 
   return (
     <div className="frame">
       <SoundToggle />
       <h2 className="section-title">🎙️ โหมดพิธีกร</h2>
       <div className="section-sub">
-        ไม่จับเวลาต่อข้อ สุ่มลำดับคำถามไว้ล่วงหน้า อ่านให้ผู้เข้าแข่งขันฟังแล้วกดเฉลยเองได้ตามจังหวะ
+        {stage === "setup"
+          ? "เลือกหมวดและจำนวนการ์ด แล้วให้ผู้เล่นเลือกการ์ดกันเอง"
+          : "ให้ผู้เล่นชี้/เลือกหมายเลขการ์ด แล้วพิธีกรแตะเปิดการ์ดนั้นบนจอ"}
       </div>
 
       {/* Team timers */}
@@ -174,7 +205,7 @@ export default function HostModePage() {
         <TeamTimer label="ทีม 2" color="var(--lie)" />
       </div>
 
-      {deck.length === 0 && (
+      {stage === "setup" && (
         <>
           <div className="row-between">
             <span style={{ fontSize: 13, color: "var(--muted)" }}>
@@ -210,60 +241,83 @@ export default function HostModePage() {
               </label>
             ))}
           </div>
+          <label className="field-label">จำนวนการ์ด</label>
+          <div className="len-select">
+            {availableCounts.map((n) => (
+              <button key={n} className={n === cardCount ? "sel" : ""} onClick={() => setCardCount(n)}>
+                {n}
+              </button>
+            ))}
+          </div>
           <button className="btn" disabled={pool.length === 0} onClick={startRound}>
-            สุ่มคำถามเริ่มรอบใหม่
+            🎴 แจกการ์ด
           </button>
         </>
       )}
 
-      {deck.length > 0 && q && (
+      {stage === "grid" && (
         <>
-          <div className="row-between">
-            <span className="category-tag">{catName}</span>
-            <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "Kanit" }}>
-              ข้อ {idx + 1}/{deck.length}
-            </span>
+          <div className="pick-grid">
+            {cards.map((c, i) => {
+              const isUsed = usedIds.has(c.id);
+              const isActive = c.id === currentId;
+              const flipped = isUsed || isActive;
+              return (
+                <div
+                  key={c.id}
+                  className={
+                    "pick-card" +
+                    (flipped ? " flipped" : "") +
+                    (isUsed ? " used" : "") +
+                    (isActive ? " active" : "")
+                  }
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                  onClick={() => pickCard(c)}
+                >
+                  <div className="pick-card-inner">
+                    <div className="pick-card-face pick-card-back">{i + 1}</div>
+                    <div className="pick-card-face pick-card-front">{isUsed ? "✅" : "❓"}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="qcard">{q.text}</div>
 
-          {revealed ? (
-            <div className="reveal show">
-              <div className={"verdict " + (q.answer ? "ok" : "no")}>
-                {q.answer ? "✅ คำตอบ: จริง" : "❌ คำตอบ: มั่ว"}
+          {current && (
+            <>
+              <div className="row-between">
+                <span className="category-tag">{currentCatName}</span>
               </div>
-              <div>{q.explain}</div>
-            </div>
-          ) : (
-            <button
-              className="btn"
-              onClick={() => {
-                playReveal();
-                setRevealed(true);
-              }}
-            >
-              เฉลย
-            </button>
+              <div className="qcard" key={current.id}>
+                {current.text}
+              </div>
+
+              {revealed ? (
+                <div className="reveal show">
+                  <div className={"verdict " + (current.answer ? "ok" : "no")}>
+                    {current.answer ? "✅ คำตอบ: จริง" : "❌ คำตอบ: มั่ว"}
+                  </div>
+                  <div>{current.explain}</div>
+                </div>
+              ) : (
+                <button className="btn" onClick={revealAnswer}>
+                  เฉลย
+                </button>
+              )}
+            </>
           )}
 
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button className="btn ghost" style={{ flex: 1 }} onClick={prev} disabled={idx === 0}>
-              ← ข้อก่อนหน้า
-            </button>
-            <button
-              className="btn"
-              style={{ flex: 1 }}
-              onClick={next}
-              disabled={idx >= deck.length - 1}
-            >
-              ข้อถัดไป →
-            </button>
-          </div>
-          <button
-            className="btn ghost"
-            style={{ marginTop: 10 }}
-            onClick={() => setDeck([])}
-          >
-            เลือกหมวดใหม่ / สุ่มรอบใหม่
+          {allUsed && (
+            <div className="info-text" style={{ textAlign: "center", margin: "16px 0" }}>
+              🎉 เปิดครบทุกใบแล้ว!
+            </div>
+          )}
+
+          <button className="btn ghost" style={{ marginTop: 16 }} onClick={startRound}>
+            🔄 แจกการ์ดใหม่ (สุ่มใหม่)
+          </button>
+          <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setStage("setup")}>
+            เปลี่ยนหมวด / จำนวนการ์ด
           </button>
         </>
       )}
