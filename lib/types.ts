@@ -33,6 +33,37 @@ export type Score = {
   profiles?: { username: string } | null;
 };
 
+export type Room = {
+  id: string;
+  code: string;
+  host_guest_id: string;
+  game_id: string;
+  category_ids: string[];
+  question_ids: string[];
+  current_index: number;
+  status: "lobby" | "playing" | "ended";
+  created_at: string;
+};
+
+export type RoomPlayer = {
+  id: string;
+  room_id: string;
+  guest_id: string;
+  nickname: string;
+  joined_at: string;
+};
+
+export type RoomAnswer = {
+  id: string;
+  room_id: string;
+  question_index: number;
+  guest_id: string;
+  nickname: string;
+  answer: boolean | null;
+  correct: boolean;
+  answered_at: string;
+};
+
 // ============================================================
 // GAMES REGISTRY — add a new game by pushing an entry here.
 // Each game's questions/categories are scoped by `id` (game_id
@@ -65,6 +96,14 @@ export const GAMES: GameEntry[] = [
     desc: "โหมดปาร์ตี้เร่งจังหวะให้วงสนุกขึ้น พร้อมกติกาความปลอดภัยในตัว ไม่ต้องล็อกอิน",
     playable: true,
     href: "/party",
+  },
+  {
+    id: "multiplayer",
+    name: "เล่นสด หลายคน",
+    icon: "📡",
+    desc: "เล่นพร้อมกันได้ 2-10 คน มีเจ้าภาพคุมจังหวะ เข้าห้องด้วยรหัส 5 หลัก ไม่ต้องล็อกอิน",
+    playable: true,
+    href: "/multiplayer",
   },
   {
     id: "coming-soon",
