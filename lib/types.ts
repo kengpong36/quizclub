@@ -165,6 +165,14 @@ export const GAMES: GameEntry[] = [
     href: "/pokdeng",
   },
   {
+    id: "charades",
+    name: "เกมใบ้คำ",
+    icon: "🙊",
+    desc: "ถือมือถือแปะหน้าผาก ให้เพื่อนใบ้คำในเวลาจำกัด เขย่าเครื่องเพื่อไปคำถัดไป ไม่ต้องล็อกอิน",
+    playable: true,
+    href: "/charades",
+  },
+  {
     id: "coming-soon",
     name: "เกมใหม่ (เร็วๆ นี้)",
     icon: "✨",
