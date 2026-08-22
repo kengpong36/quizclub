@@ -10,7 +10,7 @@ import { GAMES } from "@/lib/types";
 
 type Stage = "loading" | "pick" | "play" | "end";
 const TOTAL_TIME = 10;
-const DAILY_LIMIT = 3;
+const FALLBACK_DAILY_LIMIT = 3;
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -39,6 +39,7 @@ export default function PlayPage() {
   const [selectedCatIds, setSelectedCatIds] = useState<Set<string>>(new Set());
   const [roundLength, setRoundLength] = useState(10);
   const [playsToday, setPlaysToday] = useState<number | null>(null);
+  const [dailyLimit, setDailyLimit] = useState(FALLBACK_DAILY_LIMIT);
   const [limitError, setLimitError] = useState("");
 
   const [deck, setDeck] = useState<Question[]>([]);
@@ -83,6 +84,13 @@ export default function PlayPage() {
       setCategories(cats || []);
       setQuestions(qs || []);
       setSelectedCatIds(new Set((cats || []).map((c) => c.id)));
+      const { data: settingRow } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "daily_play_limit")
+        .maybeSingle();
+      const parsed = settingRow ? parseInt(settingRow.value, 10) : NaN;
+      setDailyLimit(!isNaN(parsed) && parsed > 0 ? parsed : FALLBACK_DAILY_LIMIT);
       if (session?.user?.id) await refreshPlaysToday(session.user.id);
       setStage("pick");
     }
@@ -128,7 +136,7 @@ export default function PlayPage() {
     new Set([5, 10, 15, pool.length].filter((v) => v > 0 && v <= pool.length))
   ).sort((a, b) => a - b);
 
-  const remainingPlays = playsToday === null ? null : Math.max(0, DAILY_LIMIT - playsToday);
+  const remainingPlays = playsToday === null ? null : Math.max(0, dailyLimit - playsToday);
   const limitReached = !isUnlimited && remainingPlays !== null && remainingPlays <= 0;
 
   function toggleCat(id: string) {
@@ -252,8 +260,8 @@ export default function PlayPage() {
             }}
           >
             {limitReached
-              ? `เล่นครบ ${DAILY_LIMIT} ครั้งของวันนี้แล้ว กลับมาเล่นใหม่ได้พรุ่งนี้นะครับ`
-              : `เล่นได้อีก ${remainingPlays}/${DAILY_LIMIT} ครั้งวันนี้`}
+              ? `เล่นครบ ${dailyLimit} ครั้งของวันนี้แล้ว กลับมาเล่นใหม่ได้พรุ่งนี้นะครับ`
+              : `เล่นได้อีก ${remainingPlays}/${dailyLimit} ครั้งวันนี้`}
           </div>
         )}
 
@@ -414,7 +422,7 @@ export default function PlayPage() {
       )}
       {!isUnlimited && remainingPlays !== null && (
         <div className="info-text" style={{ textAlign: "center", marginBottom: 16 }}>
-          เหลือโควตาเล่นวันนี้อีก {remainingPlays}/{DAILY_LIMIT} ครั้ง
+          เหลือโควตาเล่นวันนี้อีก {remainingPlays}/{dailyLimit} ครั้ง
         </div>
       )}
       <div className="end-actions">

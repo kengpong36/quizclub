@@ -5,14 +5,22 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import type { Category, Question } from "@/lib/types";
+import { GAMES } from "@/lib/types";
+import { normalizeUsername } from "@/lib/username";
 
 const GAME_ID = "truth-or-lie"; // default game managed here; extend with a game selector if you add more
+
+function startOfTodayISO(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
 
 export default function AdminPage() {
   const { session, profile, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  const [tab, setTab] = useState<"questions" | "categories">("questions");
+  const [tab, setTab] = useState<"questions" | "categories" | "settings">("questions");
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [filterCat, setFilterCat] = useState("all");
@@ -26,6 +34,15 @@ export default function AdminPage() {
   const [mAnswer, setMAnswer] = useState<"true" | "false" | "">("");
   const [mExplain, setMExplain] = useState("");
 
+  // Settings tab state
+  const [dailyLimit, setDailyLimit] = useState<string>("3");
+  const [limitSaving, setLimitSaving] = useState(false);
+  const [resetUsername, setResetUsername] = useState("");
+  const [resetGameId, setResetGameId] = useState(GAME_ID);
+  const [resetLookup, setResetLookup] = useState<{ userId: string; count: number } | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState("");
+
   useEffect(() => {
     if (!authLoading && (!session || profile?.role !== "admin")) {
       router.push("/");
@@ -33,7 +50,10 @@ export default function AdminPage() {
   }, [authLoading, session, profile, router]);
 
   useEffect(() => {
-    if (profile?.role === "admin") loadAll();
+    if (profile?.role === "admin") {
+      loadAll();
+      loadSettings();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
@@ -47,6 +67,74 @@ export default function AdminPage() {
     const { data: qs } = await supabase.from("questions").select("*").eq("game_id", GAME_ID);
     setCategories(cats || []);
     setQuestions(qs || []);
+  }
+
+  async function loadSettings() {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "daily_play_limit")
+      .maybeSingle();
+    if (!error && data) setDailyLimit(data.value);
+  }
+
+  async function saveDailyLimit() {
+    const n = parseInt(dailyLimit, 10);
+    if (isNaN(n) || n < 1) return flash("ใส่จำนวนที่ถูกต้อง (อย่างน้อย 1)");
+    setLimitSaving(true);
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({ key: "daily_play_limit", value: String(n) });
+    setLimitSaving(false);
+    if (error) return flash(error.message);
+    flash(`ตั้งโควตาเป็น ${n} ครั้ง/วันแล้ว`);
+  }
+
+  async function lookupPlays() {
+    setResetError("");
+    setResetLookup(null);
+    const uname = normalizeUsername(resetUsername);
+    if (!uname) return;
+    setResetLoading(true);
+    const { data: prof, error: profErr } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", uname)
+      .maybeSingle();
+    if (profErr || !prof) {
+      setResetLoading(false);
+      setResetError("ไม่พบผู้ใช้ชื่อนี้");
+      return;
+    }
+    const { count } = await supabase
+      .from("scores")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", prof.id)
+      .eq("game_id", resetGameId)
+      .gte("played_at", startOfTodayISO());
+    setResetLoading(false);
+    setResetLookup({ userId: prof.id, count: count ?? 0 });
+  }
+
+  async function resetPlays() {
+    if (!resetLookup) return;
+    if (
+      !confirm(
+        `รีเซ็ตโควตาวันนี้ของ "${resetUsername}" จะลบคะแนนที่เล่นวันนี้ทั้งหมด (${resetLookup.count} ครั้ง) ออกจากอันดับด้วย ยืนยันไหม?`
+      )
+    )
+      return;
+    setResetLoading(true);
+    const { error } = await supabase
+      .from("scores")
+      .delete()
+      .eq("user_id", resetLookup.userId)
+      .eq("game_id", resetGameId)
+      .gte("played_at", startOfTodayISO());
+    setResetLoading(false);
+    if (error) return flash(error.message);
+    flash("รีเซ็ตโควตาแล้ว");
+    setResetLookup({ ...resetLookup, count: 0 });
   }
 
   async function addCategory() {
@@ -146,6 +234,9 @@ export default function AdminPage() {
         <button className={tab === "categories" ? "active" : ""} onClick={() => setTab("categories")}>
           หมวดหมู่
         </button>
+        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
+          ตั้งค่า
+        </button>
       </div>
 
       {tab === "questions" && (
@@ -216,6 +307,72 @@ export default function AdminPage() {
               );
             })}
           </div>
+        </>
+      )}
+
+      {tab === "settings" && (
+        <>
+          <h3 style={{ fontFamily: "Kanit", fontSize: 15, marginBottom: 8 }}>
+            จำนวนครั้งที่เล่นได้ต่อวัน (สำหรับสมาชิกทั่วไป)
+          </h3>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={dailyLimit}
+              onChange={(e) => setDailyLimit(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{ maxWidth: 100 }}
+            />
+            <button className="btn small" onClick={saveDailyLimit} disabled={limitSaving}>
+              {limitSaving ? "กำลังบันทึก..." : "บันทึก"}
+            </button>
+          </div>
+          <div className="info-text" style={{ marginBottom: 24 }}>
+            ผู้ใช้ role admin ไม่ถูกจำกัดจำนวนครั้งเสมอ ไม่ว่าตั้งค่านี้เท่าไหร่
+          </div>
+
+          <hr style={{ borderColor: "var(--line)", margin: "20px 0" }} />
+
+          <h3 style={{ fontFamily: "Kanit", fontSize: 15, marginBottom: 8 }}>
+            รีเซ็ตโควตาการเล่นวันนี้ของผู้เล่น
+          </h3>
+          <label className="field-label">เกม</label>
+          <select value={resetGameId} onChange={(e) => setResetGameId(e.target.value)}>
+            {GAMES.filter((g) => g.playable).map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.icon} {g.name}
+              </option>
+            ))}
+          </select>
+          <label className="field-label">ชื่อผู้ใช้ (username)</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              type="text"
+              value={resetUsername}
+              onChange={(e) => setResetUsername(e.target.value)}
+              placeholder="เช่น kengpong36"
+              autoCapitalize="none"
+            />
+            <button className="btn small" onClick={lookupPlays} disabled={resetLoading || !resetUsername.trim()}>
+              ค้นหา
+            </button>
+          </div>
+          {resetError && <div className="error-text">{resetError}</div>}
+          {resetLookup && (
+            <div className="qrow" style={{ marginTop: 12 }}>
+              <div className="qtext">
+                วันนี้เล่นไปแล้ว <b>{resetLookup.count}</b> ครั้ง
+              </div>
+              <button
+                className="btn danger small"
+                style={{ marginTop: 10 }}
+                onClick={resetPlays}
+                disabled={resetLoading || resetLookup.count === 0}
+              >
+                รีเซ็ตโควตาวันนี้
+              </button>
+            </div>
+          )}
         </>
       )}
 
