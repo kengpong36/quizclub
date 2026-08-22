@@ -38,8 +38,8 @@ const WORD_BANK: Record<string, string[]> = {
 };
 
 const DURATIONS = [30, 60, 90, 120];
-const SHAKE_THRESHOLD = 18;
-const SHAKE_DEBOUNCE_MS = 900;
+const TILT_TRIGGER_DEG = 32; // how far from baseline counts as a deliberate tilt
+const TILT_RESET_DEG = 14; // must return this close to baseline before re-arming
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -52,32 +52,35 @@ function shuffle<T>(arr: T[]): T[] {
 
 type Stage = "setup" | "playing" | "end";
 type MotionPermState = "unknown" | "not-needed" | "needed" | "granted" | "denied";
+type TiltArm = "neutral" | "waiting-reset";
 
 export default function CharadesPage() {
   const [stage, setStage] = useState<Stage>("setup");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set(Object.keys(WORD_BANK)));
   const [duration, setDuration] = useState(60);
   const [motionPerm, setMotionPerm] = useState<MotionPermState>("unknown");
+  const [calibrated, setCalibrated] = useState(false);
 
   const [queue, setQueue] = useState<string[]>([]);
   const [wordIdx, setWordIdx] = useState(0);
   const [correctWords, setCorrectWords] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(60);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastShakeRef = useRef(0);
   const stageRef = useRef<Stage>("setup");
+  const baselineBetaRef = useRef<number | null>(null);
+  const armRef = useRef<TiltArm>("neutral");
 
   useEffect(() => {
     stageRef.current = stage;
   }, [stage]);
 
   useEffect(() => {
-    const DME = window.DeviceMotionEvent as unknown as
+    const DOE = window.DeviceOrientationEvent as unknown as
       | { requestPermission?: () => Promise<string> }
       | undefined;
-    if (typeof DeviceMotionEvent !== "undefined" && DME?.requestPermission) {
+    if (typeof DeviceOrientationEvent !== "undefined" && DOE?.requestPermission) {
       setMotionPerm("needed");
-    } else if (typeof window !== "undefined" && "DeviceMotionEvent" in window) {
+    } else if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) {
       setMotionPerm("not-needed");
     } else {
       setMotionPerm("not-needed");
@@ -85,32 +88,53 @@ export default function CharadesPage() {
   }, []);
 
   useEffect(() => {
-    function handleMotion(e: DeviceMotionEvent) {
+    function handleOrientation(e: DeviceOrientationEvent) {
       if (stageRef.current !== "playing") return;
-      const acc = e.accelerationIncludingGravity;
-      if (!acc) return;
-      const magnitude = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2);
-      const now = Date.now();
-      if (magnitude > SHAKE_THRESHOLD && now - lastShakeRef.current > SHAKE_DEBOUNCE_MS) {
-        lastShakeRef.current = now;
-        markCorrect();
+      const beta = e.beta; // front-to-back tilt: ~90 upright, less = tilted back/up, more = tilted forward/down
+      if (beta === null) return;
+
+      if (baselineBetaRef.current === null) {
+        baselineBetaRef.current = beta;
+        return;
+      }
+      const delta = beta - baselineBetaRef.current;
+
+      if (armRef.current === "neutral") {
+        if (delta <= -TILT_TRIGGER_DEG) {
+          // tilted UP (top of phone leaning back toward the ceiling) → correct
+          armRef.current = "waiting-reset";
+          markCorrect();
+        } else if (delta >= TILT_TRIGGER_DEG) {
+          // tilted DOWN (top of phone leaning forward toward the floor) → skip
+          armRef.current = "waiting-reset";
+          skipWord();
+        }
+      } else if (Math.abs(delta) < TILT_RESET_DEG) {
+        armRef.current = "neutral";
       }
     }
-    window.addEventListener("devicemotion", handleMotion);
-    return () => window.removeEventListener("devicemotion", handleMotion);
+    window.addEventListener("deviceorientation", handleOrientation);
+    return () => window.removeEventListener("deviceorientation", handleOrientation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function requestMotionPermission() {
-    const DME = window.DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (DME?.requestPermission) {
+    const DOE = window.DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
+    if (DOE?.requestPermission) {
       try {
-        const res = await DME.requestPermission();
+        const res = await DOE.requestPermission();
         setMotionPerm(res === "granted" ? "granted" : "denied");
       } catch {
         setMotionPerm("denied");
       }
     }
+  }
+
+  function calibrate() {
+    baselineBetaRef.current = null; // next orientation reading becomes the new baseline
+    armRef.current = "neutral";
+    setCalibrated(true);
+    setTimeout(() => setCalibrated(false), 1500);
   }
 
   function toggleCat(cat: string) {
@@ -130,6 +154,8 @@ export default function CharadesPage() {
     setCorrectWords([]);
     setTimeLeft(duration);
     setStage("playing");
+    baselineBetaRef.current = null;
+    armRef.current = "neutral";
 
     if (timerRef.current) clearInterval(timerRef.current);
     let t = duration;
@@ -217,9 +243,9 @@ export default function CharadesPage() {
 
         {motionPerm === "needed" && (
           <div className="info-text" style={{ marginBottom: 12 }}>
-            📱 อุปกรณ์นี้ต้องขออนุญาตใช้เซนเซอร์เขย่าก่อนเล่น
+            📱 อุปกรณ์นี้ต้องขออนุญาตใช้เซนเซอร์เอียงเครื่องก่อนเล่น
             <button className="btn small" style={{ marginTop: 8 }} onClick={requestMotionPermission}>
-              เปิดเซนเซอร์เขย่า
+              เปิดเซนเซอร์เอียงเครื่อง
             </button>
           </div>
         )}
@@ -228,6 +254,10 @@ export default function CharadesPage() {
             ไม่ได้รับอนุญาตใช้เซนเซอร์ — ใช้ปุ่ม &quot;ถูก&quot; / &quot;ข้าม&quot; บนจอแทนได้เลยระหว่างเล่น
           </div>
         )}
+        <div className="info-text" style={{ marginBottom: 12 }}>
+          💡 วิธีเล่น: กด &quot;เริ่มเกม&quot; ตอนถือมือถือแปะหน้าผากในท่าปกติ (ระบบจะจำมุมนั้นเป็นจุดเริ่ม) จากนั้น
+          <b> เงยขึ้น = ถูก</b>, <b>ก้มลง = ข้าม</b>
+        </div>
 
         <button className="btn" disabled={selectedCats.size === 0} onClick={startGame}>
           🎬 เริ่มเกม
@@ -282,17 +312,20 @@ export default function CharadesPage() {
       <div className="qcard" style={{ minHeight: 180, fontSize: "clamp(28px, 9vw, 40px)" }} key={currentWord + wordIdx}>
         {currentWord}
       </div>
-      <div className="info-text" style={{ textAlign: "center", marginBottom: 14 }}>
-        📳 เขย่าเครื่องเมื่อทายถูก
+      <div className="info-text" style={{ textAlign: "center", marginBottom: 10 }}>
+        📱⬆️ เงยขึ้น = ถูก &nbsp;·&nbsp; 📱⬇️ ก้มลง = ข้าม
       </div>
       <div className="answers">
         <button className="ans-btn truth" onClick={markCorrect}>
-          ✅ ถูก
+          ▲ ถูก
         </button>
         <button className="ans-btn lie" onClick={skipWord}>
-          ⏭ ข้าม
+          ▼ ข้าม
         </button>
       </div>
+      <button className="btn ghost" style={{ marginTop: 12 }} onClick={calibrate}>
+        {calibrated ? "✅ ปรับเทียบแล้ว" : "🎯 ปรับเทียบตำแหน่งเริ่มต้นใหม่"}
+      </button>
     </div>
   );
 }
