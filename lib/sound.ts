@@ -19,12 +19,35 @@ const MUTE_KEY = "qc_sound_muted";
 
 export function isMuted(): boolean {
   if (typeof window === "undefined") return true;
-  return localStorage.getItem(MUTE_KEY) === "1";
+  const stored = localStorage.getItem(MUTE_KEY);
+  // Default to muted until the person explicitly turns sound on — this also
+  // guarantees the very tap that unmutes is a real user gesture, which
+  // browsers require before they'll actually let audio play.
+  if (stored === null) return true;
+  return stored === "1";
 }
 
 export function setMuted(muted: boolean): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+}
+
+// Must be called synchronously inside a click/tap event handler. Creates
+// (or resumes) the AudioContext and plays a near-silent blip so iOS/Safari
+// and other strict browsers actually unlock audio output for this page.
+export function unlockAudio(): void {
+  const audioCtx = getCtx();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.01);
 }
 
 function tone(

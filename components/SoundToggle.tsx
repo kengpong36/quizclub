@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isMuted, setMuted } from "@/lib/sound";
+import { isMuted, setMuted, unlockAudio, playTick } from "@/lib/sound";
 
 export default function SoundToggle() {
   const [muted, setMutedState] = useState(true);
@@ -12,8 +12,17 @@ export default function SoundToggle() {
 
   function toggle() {
     const next = !muted;
+    if (!next) {
+      // Turning sound ON — this tap is the user gesture browsers require
+      // before they'll allow audio to actually play.
+      unlockAudio();
+    }
     setMuted(next);
     setMutedState(next);
+    if (!next) {
+      // small confirmation beep so it's obvious sound is now on
+      setTimeout(() => playTick(), 60);
+    }
   }
 
   return (
